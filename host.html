@@ -1,0 +1,84 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Buzzer — Host</title>
+</head>
+<body>
+    <h1>Host Screen</h1>
+    <p>Room code: <strong id="roomCode"></strong></p>
+    <!-- This div is where QRCode.js will draw the QR image into -->
+    <div id="qrcode"></div>
+
+    <!-- Load the QRCode.js library from a CDN (a public URL that serves the library file)-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- script must come AFTER the library above -->
+    <script>
+        // ── Room Code Generator ─────────────────────────
+
+        // This is the "alphabet" we pick characters from.
+        // We deliberately leave out letters like O, I, 0, 1
+        // that look similar and cause confusion when read aloud
+        const CHARACTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+        function generateRoomCode() {
+            let code = "";
+
+            // We want a 6-character code, so we loop 6 times
+            // Each iteration picks one random character from CHARACTERS
+            for (let i = 0; i < 6; i++) {
+
+                // Math.random() gives a decimal between 0 and 1, e.g. 0.73
+                // Multiplying by CHARACTERS.length (32) gives 0–31.99
+                // Math.floor() rounds it down to a whole number: 0–31
+                // That whole number is used as the index into CHARACTERS
+                const randomIndex = Math.floor(Math.random() * CHARACTERS.length);
+                code += CHARACTERS[randomIndex];
+            }
+
+            return code; // e.g. "K7QMNA"
+        }
+
+        // Generate a code when the page loads and store it in a variable
+        // so other functions can access it later (e.g. when building the QR url)
+        const roomCode = generateRoomCode();
+
+        // Display it on the page
+        document.getElementById("roomCode").innerText = roomCode;
+
+        // ── QR Code Generator ───────────────────────────
+
+        // First we build the full URL that players will land on when they scan.
+        // window.location.origin gives the base of your current URL.
+        // For example if you're on Live Server it might be:
+        //   http://127.0.0.1:5500
+        // On GitHub Pages it would be:
+        //   https://yourusername.github.io/buzzer-app
+        // We then add /join.html?room= and the room code.
+        // So the full URL becomes something like:
+        //   http://127.0.0.1:5500/join.html?room=K7QMNA
+        const joinUrl = `${window.location.origin}/join.html?room=${roomCode}`;
+        // QRCode is a constructor provided by the library we loaded above.
+        // We call it with "new" to create a QR code instance.
+        // It takes two arguments:
+        //   1. The DOM element to draw the QR code into
+        //   2. An options object that configures the QR code
+        new QRCode(document.getElementById("qrcode"), {
+            text: joinUrl,       // the URL encoded into the QR image
+            width: 220,          // pixel width of the generated image
+            height: 220,         // pixel height
+            colorDark: "#000000", // colour of the dark squares
+            colorLight: "#ffffff" // colour of the light squares (background)
+        });
+
+        // Log the URL to the browser console so you can test it
+        // Open DevTools (F12) → Console tab to see it
+        // You can click it there to verify join.html loads correctly
+        console.log("Join URL:", joinUrl);
+
+    </script>
+        
+</body>
+</html>
