@@ -5,6 +5,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Buzzer — Host</title>
+    <!-- Load credentials first, before anything else runs -->
+    <script src="./config.js"></script>
 </head>
 <body>
     <h1>Host Screen</h1>
@@ -12,73 +14,147 @@
     <!-- This div is where QRCode.js will draw the QR image into -->
     <div id="qrcode"></div>
 
-    <!-- Load the QRCode.js library from a CDN (a public URL that serves the library file)-->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <!-- script must come AFTER the library above -->
-    <script>
-        // ── Room Code Generator ─────────────────────────
+    <!-- Leaderboard — fills in as buzzes arrive -->
+    <div id="leaderboard">Waiting for buzzes...</div>
 
-        // This is the "alphabet" we pick characters from.
-        // We deliberately leave out letters like O, I, 0, 1
-        // that look similar and cause confusion when read aloud
+    <!-- Reset button — clears all buzzes for a new round -->
+    <button id="resetBtn">Re-vote</button>
+
+
+    <!-- script must come AFTER the library above -->
+    <!-- Load the QRCode.js library BEFORE the module script -->
+    <!-- QRCode.js doesn't support modules so it stays as a separate regular script -->
+    <script src="./qrcode.min.js"></script>
+
+    <script type="module">
+
+        // ── IMPORTS FIRST ────────────────────────────────────
+        import { supabase } from "./supabase.js";
+
+
+        // ── Room Code Generator ──────────────────────────────
+        // Generates a random 6 character code each time host page loads
+        // Characters chosen to avoid confusion e.g. O vs 0, I vs 1
         const CHARACTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
         function generateRoomCode() {
             let code = "";
-
-            // We want a 6-character code, so we loop 6 times
-            // Each iteration picks one random character from CHARACTERS
             for (let i = 0; i < 6; i++) {
-
-                // Math.random() gives a decimal between 0 and 1, e.g. 0.73
-                // Multiplying by CHARACTERS.length (32) gives 0–31.99
-                // Math.floor() rounds it down to a whole number: 0–31
-                // That whole number is used as the index into CHARACTERS
                 const randomIndex = Math.floor(Math.random() * CHARACTERS.length);
                 code += CHARACTERS[randomIndex];
             }
-
-            return code; // e.g. "K7QMNA"
+            return code;
         }
 
-        // Generate a code when the page loads and store it in a variable
-        // so other functions can access it later (e.g. when building the QR url)
-        const roomCode = generateRoomCode();
 
-        // Display it on the page
+        // Now we can safely call it
+        const roomCode = generateRoomCode();
         document.getElementById("roomCode").innerText = roomCode;
 
-        // ── QR Code Generator ───────────────────────────
+        console.log("Room code generated:", roomCode);
 
-        // First we build the full URL that players will land on when they scan.
-        // window.location.origin gives the base of your current URL.
-        // For example if you're on Live Server it might be:
-        //   http://127.0.0.1:5500
-        // On GitHub Pages it would be:
-        //   https://yourusername.github.io/buzzer-app
-        // We then add /join.html?room= and the room code.
-        // So the full URL becomes something like:
-        //   http://127.0.0.1:5500/join.html?room=K7QMNA
+        // ── QR Code Generator ────────────────────────────────
+        // Builds the full URL players will land on when they scan
+        // window.location.origin automatically uses the correct domain
+        // whether on Live Server or GitHub Pages
         const joinUrl = `${window.location.origin}/join.html?room=${roomCode}`;
-        // QRCode is a constructor provided by the library we loaded above.
-        // We call it with "new" to create a QR code instance.
-        // It takes two arguments:
-        //   1. The DOM element to draw the QR code into
-        //   2. An options object that configures the QR code
+
         new QRCode(document.getElementById("qrcode"), {
-            text: joinUrl,       // the URL encoded into the QR image
-            width: 220,          // pixel width of the generated image
-            height: 220,         // pixel height
-            colorDark: "#000000", // colour of the dark squares
-            colorLight: "#ffffff" // colour of the light squares (background)
+            text: joinUrl,
+            width: 220,
+            height: 220,
+            colorDark: "#000000",
+            colorLight: "#ffffff"
         });
 
-        // Log the URL to the browser console so you can test it
-        // Open DevTools (F12) → Console tab to see it
-        // You can click it there to verify join.html loads correctly
         console.log("Join URL:", joinUrl);
 
+
+        // ── Buzzes array ─────────────────────────────────────
+        // Stores all buzzes locally in arrival order
+        // Re-rendered every time a new buzz comes in
+        let buzzes = [];
+
+
+        // ── Render leaderboard ───────────────────────────────
+        // Clears and redraws the leaderboard from the buzzes array
+        function renderLeaderboard() {
+            const board = document.getElementById("leaderboard");
+
+            if (buzzes.length === 0) {
+                board.innerText = "Waiting for buzzes...";
+                return;
+            }
+
+            board.innerHTML = "";
+
+            buzzes.forEach((buzz, index) => {
+                const entry = document.createElement("div");
+                const medals = ["🥇", "🥈", "🥉"];
+                const medal = medals[index] || `${index + 1}.`;
+                entry.innerText = `${medal} ${buzz.nickname}`;
+                board.appendChild(entry);
+            });
+        }
+
+
+        // ── Real-time listener ───────────────────────────────
+        // Subscribes to new rows in the buzzes table for this room
+        // Fires instantly when any player hits the buzz button
+        function startListening() {
+            supabase
+                .channel("buzzes-channel")
+                .on("postgres_changes", {
+                    event: "INSERT",
+                    schema: "public",
+                    table: "buzzes",
+                    filter: `room=eq.${roomCode}`
+                }, (payload) => {
+                    console.log("New buzz received:", payload.new);
+
+                    buzzes.push(payload.new);
+
+                    // Sort by buzzed_at to guarantee correct order
+                    // even if two buzzes arrive at nearly the same time
+                    buzzes.sort((a, b) =>
+                        new Date(a.buzzed_at) - new Date(b.buzzed_at)
+                    );
+
+                    renderLeaderboard();
+                })
+                .subscribe();
+        }
+
+
+        // ── Reset buzzes ─────────────────────────────────────
+        // Clears local array and deletes all buzzes for this room
+        // from Supabase so a fresh round can begin
+        async function resetBuzzes() {
+            buzzes = [];
+            renderLeaderboard();
+
+            const { error } = await supabase
+                .from("buzzes")
+                .delete()
+                .eq("room", roomCode);
+
+            if (error) {
+                console.error("Reset failed:", error.message);
+            } else {
+                console.log("Buzzes cleared for room", roomCode);
+            }
+        }
+
+
+        // ── Initialise ───────────────────────────────────────
+        startListening();
+        console.log("Listening started for room:", roomCode);
+        renderLeaderboard();
+
+
+        // ── Event listeners ──────────────────────────────────
+        document.getElementById("resetBtn").addEventListener("click", resetBuzzes);
+
     </script>
-        
 </body>
 </html>

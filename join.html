@@ -5,6 +5,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Buzzer — Join</title>
+    <!-- Load credentials first, before anything else runs -->
+    <script src="./config.js"></script>
 </head>
 <body>
     <!-- SCREEN 1: Nickname entry -->
@@ -20,7 +22,7 @@
                placeholder="Enter your nickname"
                maxlength="20">
 
-        <button onclick="joinGame()">Join</button>
+        <button id="joinBtn">Join</button>
 
         <!-- Error message shown if they try to join with empty nickname -->
         <!-- Hidden by default, we reveal it in JS if needed -->
@@ -38,83 +40,113 @@
 
         <p>Waiting for the host to open the buzzer...</p>
     </div>
+    <!-- SCREEN 3: Buzzer -->
+    <!-- Hidden by default, shown when host opens the buzzer -->
+    <div id="buzzerScreen" style="display:none;">
+        <h1>Ready!</h1>
+        <p>Playing as: <strong id="buzzerNameDisplay"></strong></p>
 
-    <script>
-        // Read the room code from the URL
-        // When a player scans the QR, the URL looks like:
-        //   join.html?room=K7QMNA
-        // URLSearchParams lets us read those ?key=value pairs
-        // window.location.search is the "?room=K7QMNA" part of the URL
+        <!-- The big button players will smash -->
+        <button id="buzzBtn">BUZZ!</button>
+
+        <!-- Shown after they buzz, hidden by default -->
+        <p id="buzzConfirmation" style="display:none;">
+            ✅ Buzzed! Waiting for host...
+        </p>
+    </div>
+    <script type="module">
+
+        // ── IMPORTS ALWAYS FIRST ─────────────────────────────
+        import { supabase } from "./supabase.js";
+
+
+        // ── Read room code from URL ──────────────────────────
         const params = new URLSearchParams(window.location.search);
-
-        // .get("room") extracts the value after "room="
-        // If the URL had no room parameter this returns null
         const room = params.get("room");
-
-        // Display the room code on screen so players can verify
-        // they're joining the right game
         document.getElementById("roomCodeDisplay").innerText = room || "No room found";
 
-        // ── Shared function to switch to the waiting screen ──
-        // We extract this into its own function because now
-        // two places need to do it: joinGame() and the reload check above
+
+        // ── Screen switching functions ───────────────────────
         function switchToWaiting(nickname) {
             document.getElementById("nicknameScreen").style.display = "none";
             document.getElementById("waitingScreen").style.display = "block";
             document.getElementById("playerNameDisplay").innerText = nickname;
             console.log(`Player "${nickname}" in room "${room}"`);
         }
-        // ── Join button handler ──────────────────────────
 
+        function switchToBuzzer() {
+            document.getElementById("waitingScreen").style.display = "none";
+            document.getElementById("buzzerScreen").style.display = "block";
+            const nickname = sessionStorage.getItem("playerNickname");
+            document.getElementById("buzzerNameDisplay").innerText = nickname;
+        }
+
+
+        // ── Join function ────────────────────────────────────
         function joinGame() {
             const nickname = document.getElementById("nicknameInput").value.trim();
             if (!nickname) {
-                // Show the error message that was hidden in the HTML
                 document.getElementById("errorMsg").style.display = "block";
-
-                // Stop the function here, don't proceed
                 return;
             }
-            // If we get here the nickname is valid.
-            // Hide the error message in case it was showing from a previous attempt
             document.getElementById("errorMsg").style.display = "none";
-
-            // Store in sessionStorage instead of window
-            // sessionStorage.setItem takes a key and a value, both strings
             sessionStorage.setItem("playerNickname", nickname);
             sessionStorage.setItem("playerRoom", room);
-
             switchToWaiting(nickname);
         }
-        // ── Check on page load if player already joined ──────
-        // If sessionStorage already has a nickname (from before the reload)
-        // we skip the nickname screen entirely and go straight to waiting
+
+
+        // ── Buzz function ────────────────────────────────────
+        async function buzz() {
+            const nickname = sessionStorage.getItem("playerNickname");
+            const room = sessionStorage.getItem("playerRoom");
+
+            document.getElementById("buzzBtn").disabled = true;
+
+            const { error } = await supabase
+                .from("buzzes")
+                .insert({
+                    room: room,
+                    nickname: nickname
+                });
+
+            if (error) {
+                console.error("Buzz failed:", error.message);
+                document.getElementById("buzzBtn").disabled = false;
+                return;
+            }
+
+            document.getElementById("buzzBtn").style.display = "none";
+            document.getElementById("buzzConfirmation").style.display = "block";
+            console.log(`${nickname} buzzed in room ${room}`);
+        }
+
+
+        // ── Reload check ─────────────────────────────────────
+        // Runs immediately when page loads
+        // If player already joined before a reload, skip nickname screen
         const savedNickname = sessionStorage.getItem("playerNickname");
         const savedRoom = sessionStorage.getItem("playerRoom");
-
         if (savedNickname && savedRoom === room) {
-            // savedRoom === room check is important —
-            // it makes sure the saved session is for THIS game's room code
-            // not a leftover from a different game earlier in the same browser session
             switchToWaiting(savedNickname);
         }
 
 
-
-
-
-        // ── Allow pressing Enter to join ─────────────────
-
-        // Instead of forcing players to tap the button,
-        // we listen for the Enter key on the nickname input.
-        // "keydown" fires every time any key is pressed.
-        // We check if the pressed key was specifically Enter.
+        // ── Event listeners ──────────────────────────────────
+        // All attached here rather than via onclick in HTML
+        document.getElementById("joinBtn").addEventListener("click", joinGame);
+        document.getElementById("buzzBtn").addEventListener("click", buzz);
         document.getElementById("nicknameInput").addEventListener("keydown", function (event) {
             if (event.key === "Enter") {
                 joinGame();
             }
         });
-        
+
+
+        // ── Temporary console test ───────────────────────────
+        // Type switchToBuzzer() in DevTools console to test the buzzer screen
+        window.switchToBuzzer = switchToBuzzer;
+
     </script>
 </body>
 </html>
