@@ -121,6 +121,40 @@
             console.log(`${nickname} buzzed in room ${room}`);
         }
 
+        // ── Listen to room state ─────────────────────────────
+        // NEW — added here, after buzz() and before reload check
+        // Subscribes to changes on the rooms table for this room.
+        // Fires when host opens or closes the buzzer.
+        function listenToRoomState() {
+            supabase
+                .channel("room-state-channel")
+                .on("postgres_changes", {
+                    event: "UPDATE",
+                    schema: "public",
+                    table: "rooms",
+                    filter: `code=eq.${room}`
+                }, (payload) => {
+                    console.log("Room state changed:", payload.new);
+
+                    const buzzerOpen = payload.new.buzzer_open;
+
+                    if (buzzerOpen) {
+                        // Host opened buzzer — show buzzer screen
+                        // and make sure button is enabled
+                        switchToBuzzer();
+                        document.getElementById("buzzBtn").disabled = false;
+                        document.getElementById("buzzBtn").style.display = "block";
+                        document.getElementById("buzzConfirmation").style.display = "none";
+                    } else {
+                        // Host closed buzzer or reset the round
+                        // Reset the buzz button so player can buzz again next round
+                        document.getElementById("buzzBtn").disabled = true;
+                        document.getElementById("buzzBtn").style.display = "block";
+                        document.getElementById("buzzConfirmation").style.display = "none";
+                    }
+                })
+                .subscribe();
+        }
 
         // ── Reload check ─────────────────────────────────────
         // Runs immediately when page loads
@@ -131,9 +165,12 @@
             switchToWaiting(savedNickname);
         }
 
+        // NEW — call listenToRoomState after reload check
+        // so the player starts listening as soon as the page loads
+        listenToRoomState();
+
 
         // ── Event listeners ──────────────────────────────────
-        // All attached here rather than via onclick in HTML
         document.getElementById("joinBtn").addEventListener("click", joinGame);
         document.getElementById("buzzBtn").addEventListener("click", buzz);
         document.getElementById("nicknameInput").addEventListener("keydown", function (event) {

@@ -10,16 +10,27 @@
 </head>
 <body>
     <h1>Host Screen</h1>
+
+    <!-- Shows whether buzzer is currently open or closed -->
+    <p id="buzzerStatus">Buzzer: Closed</p>
+
+    <!-- Host controls -->
+    <!-- Open Buzzer lets players buzz -->
+    <!-- Next Responder moves down the leaderboard -->
+    <!-- Re-vote clears all buzzes for a fresh round -->
+    <div id="controls">
+        <button id="openBtn">Open Buzzer</button>
+        <button id="nextBtn">Next Responder</button>
+        <button id="resetBtn">Re-vote</button>
+    </div>
+
     <p>Room code: <strong id="roomCode"></strong></p>
+
     <!-- This div is where QRCode.js will draw the QR image into -->
     <div id="qrcode"></div>
 
     <!-- Leaderboard — fills in as buzzes arrive -->
     <div id="leaderboard">Waiting for buzzes...</div>
-
-    <!-- Reset button — clears all buzzes for a new round -->
-    <button id="resetBtn">Re-vote</button>
-
 
     <!-- script must come AFTER the library above -->
     <!-- Load the QRCode.js library BEFORE the module script -->
@@ -50,7 +61,6 @@
         // Now we can safely call it
         const roomCode = generateRoomCode();
         document.getElementById("roomCode").innerText = roomCode;
-
         console.log("Room code generated:", roomCode);
 
         // ── QR Code Generator ────────────────────────────────
@@ -69,12 +79,77 @@
 
         console.log("Join URL:", joinUrl);
 
-
-        // ── Buzzes array ─────────────────────────────────────
-        // Stores all buzzes locally in arrival order
-        // Re-rendered every time a new buzz comes in
+        // ── State variables ──────────────────────────────────
+        // buzzes stores all buzz events for the current round
+        // buzzerOpen tracks whether players can currently buzz
+        // currentResponder tracks which position in the leaderboard is active
         let buzzes = [];
+        let buzzerOpen = false;
+        let currentResponder = 0;
 
+        // ── Create room ──────────────────────────────────────
+        // Inserts a row into the rooms table when host page loads
+        // onConflict.ignore() means if the room already exists do nothing
+        async function createRoom() {
+            const { error } = await supabase
+                .from("rooms")
+                .upsert(
+                    { code: roomCode, buzzer_open: false },
+                    { onConflict: "code", ignoreDuplicates: true }
+                );
+
+            if (error) {
+                console.error("Room creation failed:", error.message);
+            } else {
+                console.log("Room created:", roomCode);
+            }
+        }
+
+        // ── Toggle buzzer ────────────────────────────────────
+        // Flips buzzer_open in the rooms table
+        // Players listen to this in real time and enable/disable
+        // their buzz button accordingly
+        async function toggleBuzzer() {
+            buzzerOpen = !buzzerOpen;
+
+            const { error } = await supabase
+                .from("rooms")
+                .update({ buzzer_open: buzzerOpen })
+                .eq("code", roomCode);
+
+            if (error) {
+                console.error("Buzzer toggle failed:", error.message);
+                // Revert local state if Supabase update failed
+                buzzerOpen = !buzzerOpen;
+                return;
+            }
+
+            document.getElementById("openBtn").innerText =
+                buzzerOpen ? "Close Buzzer" : "Open Buzzer";
+            document.getElementById("buzzerStatus").innerText =
+                buzzerOpen ? "Buzzer: Open 🟢" : "Buzzer: Closed 🔴";
+
+            console.log("Buzzer is now:", buzzerOpen ? "open" : "closed");
+        }
+
+
+        // ── Next responder ───────────────────────────────────
+        // Called when host clicks Next Responder.
+        // Moves the highlight down the leaderboard one position.
+        // Useful when the first buzzer answered incorrectly
+        // and the host wants to give the next person a chance.
+        function nextResponder() {
+            // Don't go past the end of the list
+            if (currentResponder >= buzzes.length - 1) {
+                console.log("No more responders");
+                return;
+            }
+
+            currentResponder++;
+
+            // Re-render with the new current position highlighted
+            renderLeaderboard();
+        }
 
         // ── Render leaderboard ───────────────────────────────
         // Clears and redraws the leaderboard from the buzzes array
@@ -83,6 +158,7 @@
 
             if (buzzes.length === 0) {
                 board.innerText = "Waiting for buzzes...";
+                currentResponder = 0;
                 return;
             }
 
@@ -93,6 +169,12 @@
                 const medals = ["🥇", "🥈", "🥉"];
                 const medal = medals[index] || `${index + 1}.`;
                 entry.innerText = `${medal} ${buzz.nickname}`;
+                // Highlight the current responder in bold
+                // so the host knows whose turn it is
+                if (index === currentResponder) {
+                    entry.style.fontWeight = "bold";
+                    entry.style.fontSize = "1.3em";
+                }
                 board.appendChild(entry);
             });
         }
@@ -131,14 +213,40 @@
         // from Supabase so a fresh round can begin
         async function resetBuzzes() {
             buzzes = [];
+            currentResponder = 0;
             renderLeaderboard();
 
-            const { error } = await supabase
+
+            // Close the buzzer first so players can't buzz
+            // while the round is resetting
+            buzzerOpen = false;
+            document.getElementById("openBtn").innerText = "Open Buzzer";
+            document.getElementById("buzzerStatus").innerText = "Buzzer: Closed 🔴";
+
+            // Update rooms table — this triggers listenToRoomState
+            // on all player screens, which resets their buzz button
+            const { error: roomError } = await supabase
+                .from("rooms")
+                .update({ buzzer_open: false })
+                .eq("code", roomCode);
+
+            if (roomError) {
+                console.error("Room reset failed:", roomError.message);
+            }
+
+            // Now tell Supabase to delete the rows
+            // .delete() removes rows
+            // .eq("room", roomCode) means "only delete rows where room = our code"
+            // without .eq() it would delete EVERY row in the table
+
+            const { error: buzzError } = await supabase
                 .from("buzzes")
                 .delete()
                 .eq("room", roomCode);
 
-            if (error) {
+            if (buzzError) {
+                // error.message is a human readable description
+                // e.g. "permission denied" or "relation does not exist"
                 console.error("Reset failed:", error.message);
             } else {
                 console.log("Buzzes cleared for room", roomCode);
@@ -147,12 +255,15 @@
 
 
         // ── Initialise ───────────────────────────────────────
+        await createRoom();
         startListening();
-        console.log("Listening started for room:", roomCode);
         renderLeaderboard();
+        console.log("Listening started for room:", roomCode);
 
 
         // ── Event listeners ──────────────────────────────────
+        document.getElementById("openBtn").addEventListener("click", toggleBuzzer);
+        document.getElementById("nextBtn").addEventListener("click", nextResponder);
         document.getElementById("resetBtn").addEventListener("click", resetBuzzes);
 
     </script>
