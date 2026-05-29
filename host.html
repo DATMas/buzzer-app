@@ -106,7 +106,18 @@
                     return code;
                 }
 
-                const roomCode = generateRoomCode();
+                // Check sessionStorage first — if a room code was generated
+                // earlier in this browser session, reuse it so a refresh
+                // doesn't create a brand new room and lose all players.
+                // Only generate a fresh code if there isn't one saved yet.
+                const savedRoomCode = sessionStorage.getItem("hostRoomCode");
+                const roomCode = savedRoomCode || generateRoomCode();
+
+                // If we just generated a new code, save it for future refreshes
+                if (!savedRoomCode) {
+                    sessionStorage.setItem("hostRoomCode", roomCode);
+                }
+
                 document.getElementById("roomCode").innerText = roomCode;
                 console.log("Room code generated:", roomCode);
 

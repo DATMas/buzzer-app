@@ -142,6 +142,22 @@
                 return;
             }
 
+            // Check if nickname is already taken in this room
+            const { data: existingPlayer, error: nickError } = await supabase
+                .from("players")
+                .select("nickname")
+                .eq("room", room)
+                .eq("nickname", nickname)
+                .single();
+
+            // .single() returns an error if no row found — that's
+            // actually the good case here, meaning the name is free.
+            // If data comes back it means the name is already taken.
+            if (existingPlayer) {
+                errorMsg.innerText = "That nickname is already taken in this room. Pick another!";
+                errorMsg.style.display = "block";
+                return;
+            }
             // Validate nickname
             if (!nickname) {
                 errorMsg.innerText = "Please enter a nickname";
@@ -319,8 +335,16 @@
         const savedRoom = sessionStorage.getItem("playerRoom");
 
         if (savedNickname && savedRoom) {
-            switchToWaiting(savedNickname, savedRoom);
-            listenToRoomState(savedRoom);
+            if (!roomFromUrl || savedRoom === roomFromUrl) {
+                // Same room or no room in URL — restore session
+                switchToWaiting(savedNickname, savedRoom);
+                listenToRoomState(savedRoom);
+            } else {
+                // Different room in URL — clear old session and start fresh
+                sessionStorage.removeItem("playerNickname");
+                sessionStorage.removeItem("playerRoom");
+                listenToRoomState(roomFromUrl);
+            }
         } else if (roomFromUrl) {
             // Not yet joined but room code is in the URL —
             // start listening now so the transition is instant
