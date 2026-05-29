@@ -4,73 +4,117 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#46178f">
     <title>Buzzer — Join</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Nunito+Sans:wght@400;600&display=swap" rel="stylesheet">
     <!-- Load credentials first, before anything else runs -->
     <script src="./config.js"></script>
 </head>
 <body>
-    <!-- SCREEN 1: Nickname entry -->
-    <!-- This is visible by default when the page loads -->
-    <div id="nicknameScreen">
-        <h1>Join Game</h1>
-        <!-- We display the room code so players can confirm -->
-        <!-- they scanned the right QR code -->
-        <p>Room: <strong id="roomCodeDisplay"></strong></p>
+    <div class="app-container">
 
-        <input type="text"
-               id="nicknameInput"
-               placeholder="Enter your nickname"
-               maxlength="20">
+        <div class="app-header">
+            <div class="app-logo">⚡ Buzzer</div>
+        </div>
 
-        <button id="joinBtn">Join</button>
+        <div class="card">
+            <!-- SCREEN 1: Nickname entry -->
+            <!-- This is visible by default when the page loads -->
+            <div id="nicknameScreen">
+                <h1>Join Game</h1>
+                <div class="join-screen">
+                    <!-- We display the room code so players can confirm -->
+                    <!-- they scanned the right QR code -->
+                    <!-- Room code input — pre-filled if player scanned QR,
+            empty if they navigated here from the landing page.
+            Either way they can type or edit the code. -->
+                    <div class="room-code-entry">
+                        <label class="room-code-label">Room Code</label>
+                        <input type="text"
+                               id="roomCodeInput"
+                               class="room-code-input"
+                               placeholder="e.g. K7QMNA"
+                               maxlength="6"
+                               autocomplete="off"
+                               autocapitalize="characters">
+                    </div>
 
-        <!-- Error message shown if they try to join with empty nickname -->
-        <!-- Hidden by default, we reveal it in JS if needed -->
-        <p id="errorMsg" style="display:none; color:red;">
-            Please enter a nickname
-        </p>
+                    <!-- Nickname input -->
+                    <input type="text"
+                           id="nicknameInput"
+                           class="nickname-input"
+                           placeholder="Your nickname"
+                           maxlength="20"
+                           autocomplete="off">
+
+                    <button id="joinBtn" class="btn-join">Let's Go! →</button>
+
+                    <!-- Single error message element — text set by JS depending on error -->
+                    <p id="errorMsg" class="error-msg"></p>
+                </div>
+            </div>
+
+            <!-- SCREEN 2: Waiting room -->
+            <!-- Hidden by default, shown after player successfully joins -->
+            <div id="waitingScreen" style="display:none;">
+                <div class="waiting-screen">
+                    <span class="waiting-icon">⏳</span>
+                    <span class="waiting-name" id="playerNameDisplay"></span>
+                    <div class="room-badge" style="margin: 0 auto 12px;">
+                        <span class="room-label">Room</span>
+                        <span class="room-code" id="roomCodeDisplay"></span>
+                    </div>
+                    <p class="waiting-msg">Waiting for the host to open the buzzer…</p>
+                </div>
+            </div>
+            <!-- SCREEN 3: Buzzer -->
+            <!-- Hidden by default, shown when host opens the buzzer -->
+            <div id="buzzerScreen" style="display:none;">
+                <div class="buzzer-screen">
+                    <p class="buzzer-player-name" id="buzzerNameDisplay"></p>
+                    <button id="buzzBtn" class="buzz-btn">BUZZ!</button>
+                    <p id="buzzConfirmation" class="buzz-confirmation">
+                        ✅ Buzzed!<br>Waiting for host…
+                    </p>
+                </div>
+            </div>
+        </div>
     </div>
-    <!-- SCREEN 2: Waiting room -->
-    <!-- Hidden by default, shown after player successfully joins -->
-    <div id="waitingScreen" style="display:none;">
-        <h1>You're in! 🎉</h1>
-
-        <!-- We'll fill this in with their nickname via JS -->
-        <p>Playing as: <strong id="playerNameDisplay"></strong></p>
-
-        <p>Waiting for the host to open the buzzer...</p>
-    </div>
-    <!-- SCREEN 3: Buzzer -->
-    <!-- Hidden by default, shown when host opens the buzzer -->
-    <div id="buzzerScreen" style="display:none;">
-        <h1>Ready!</h1>
-        <p>Playing as: <strong id="buzzerNameDisplay"></strong></p>
-
-        <!-- The big button players will smash -->
-        <button id="buzzBtn">BUZZ!</button>
-
-        <!-- Shown after they buzz, hidden by default -->
-        <p id="buzzConfirmation" style="display:none;">
-            ✅ Buzzed! Waiting for host...
-        </p>
-    </div>
+ 
     <script type="module">
 
-        // ── IMPORTS ALWAYS FIRST ─────────────────────────────
+        // ── IMPORTS FIRST ────────────────────────────────────
         import { supabase } from "./supabase.js";
 
 
         // ── Read room code from URL ──────────────────────────
+        // Players who scanned the QR code will have ?room=CODE in the URL.
+        // Players who came from the landing page won't — they type it manually.
         const params = new URLSearchParams(window.location.search);
-        const room = params.get("room");
-        document.getElementById("roomCodeDisplay").innerText = room || "No room found";
+        const roomFromUrl = params.get("room");
+
+        // Pre-fill the room code input if it came from the URL
+        // so QR scanners don't have to type it
+        if (roomFromUrl) {
+            document.getElementById("roomCodeInput").value = roomFromUrl.toUpperCase();
+        }
+
+        // Show the room code badge on the waiting screen
+        // This is updated once the player successfully joins
+        document.getElementById("roomCodeDisplay").innerText = roomFromUrl || "";
 
 
-        // ── Screen switching functions ───────────────────────
-        function switchToWaiting(nickname) {
+        // ── Screen switching functions ────────────────────────
+
+        function switchToWaiting(nickname, room) {
             document.getElementById("nicknameScreen").style.display = "none";
             document.getElementById("waitingScreen").style.display = "block";
             document.getElementById("playerNameDisplay").innerText = nickname;
+            document.getElementById("roomCodeDisplay").innerText = room;
             console.log(`Player "${nickname}" in room "${room}"`);
         }
 
@@ -83,32 +127,144 @@
 
 
         // ── Join function ────────────────────────────────────
-        function joinGame() {
+        // Validates both room code and nickname before joining.
+        // Inserts a row into the players table so the host
+        // can see who has joined in real time.
+        async function joinGame() {
+            const room = document.getElementById("roomCodeInput").value.trim().toUpperCase();
             const nickname = document.getElementById("nicknameInput").value.trim();
-            if (!nickname) {
-                document.getElementById("errorMsg").style.display = "block";
+            const errorMsg = document.getElementById("errorMsg");
+
+            // Validate room code — must be 6 characters
+            if (!room || room.length < 6) {
+                errorMsg.innerText = "Please enter a valid 6-character room code";
+                errorMsg.style.display = "block";
                 return;
             }
-            document.getElementById("errorMsg").style.display = "none";
+
+            // Validate nickname
+            if (!nickname) {
+                errorMsg.innerText = "Please enter a nickname";
+                errorMsg.style.display = "block";
+                return;
+            }
+
+            errorMsg.style.display = "none";
+
+            // Check the room exists in Supabase before joining.
+            // This prevents players joining a room that hasn't started.
+            const { data: roomData, error: roomError } = await supabase
+                .from("rooms")
+                .select("code")
+                .eq("code", room)
+                .single();
+
+            if (roomError || !roomData) {
+                errorMsg.innerText = "Room not found. Check the code and try again.";
+                errorMsg.style.display = "block";
+                return;
+            }
+
+            // Insert player into the players table so the host
+            // can see them appear in real time on the host screen
+            const { error: playerError } = await supabase
+                .from("players")
+                .insert({ room: room, nickname: nickname });
+
+            if (playerError) {
+                console.error("Failed to register player:", playerError.message);
+                // Don't block joining if this fails — not critical
+            }
+
+            // Save to sessionStorage so reload doesn't kick player back
             sessionStorage.setItem("playerNickname", nickname);
             sessionStorage.setItem("playerRoom", room);
-            switchToWaiting(nickname);
+
+            switchToWaiting(nickname, room);
         }
 
+        // ── Buzz sound ───────────────────────────────────────
+        // Uses the Web Audio API — built into every modern browser.
+        // No files or CDN needed. We create an AudioContext which
+        // is essentially a sound engine, then describe the sound
+        // mathematically and play it immediately.
+        function playBuzzSound() {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+            // We create TWO oscillators layered together.
+            // One carries the main buzz tone, the other adds a slightly
+            // detuned layer on top — this thickens the sound and makes
+            // it feel more like a real electrical buzzer rather than
+            // a clean electronic beep.
+            const osc1 = ctx.createOscillator();
+            const osc2 = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+
+            // Connect both oscillators through the same gain node
+            osc1.connect(gainNode);
+            osc2.connect(gainNode);
+            gainNode.connect(ctx.destination);
+
+            // Square wave is harsher and more buzzer-like than sawtooth —
+            // it's the classic sound of a game show buzzer or door buzzer.
+            // The flat top/bottom of the wave creates that aggressive edge.
+            osc1.type = "square";
+            osc2.type = "square";
+
+            // osc1 is the main tone — 120Hz is a low, aggressive buzz
+            // frequency. Lower than before for more weight.
+            osc1.frequency.setValueAtTime(80, ctx.currentTime);
+
+            // osc2 is slightly detuned — 7Hz above osc1.
+            // The small difference between the two frequencies creates
+            // a "beating" effect as the waves interfere with each other,
+            // which is exactly what real buzzers sound like.
+            osc2.frequency.setValueAtTime(87, ctx.currentTime);
+
+            // Both frequencies drop slightly over the first 0.15 seconds —
+            // gives the sound a downward "thunk" at the start
+            osc1.frequency.exponentialRampToValueAtTime(55, ctx.currentTime + 0.15);
+            osc2.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 0.15);
+
+            // Volume envelope — how the sound changes over time:
+            // Start at 0 to avoid a click artefact on some devices
+            gainNode.gain.setValueAtTime(0, ctx.currentTime);
+
+            // Ramp up to full volume very quickly (0.01s) — the attack
+            gainNode.gain.linearRampToValueAtTime(0.8, ctx.currentTime + 0.01);
+
+            // Hold at full volume until 0.5s — the sustain
+            // This is what makes it feel longer than before
+            gainNode.gain.setValueAtTime(0.8, ctx.currentTime + 0.5);
+
+            // Fade out over the last 0.3s — the release
+            gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+
+            // Total duration is now 0.8 seconds — more than double before
+            osc1.start(ctx.currentTime);
+            osc2.start(ctx.currentTime);
+            osc1.stop(ctx.currentTime + 0.8);
+            osc2.stop(ctx.currentTime + 0.8);
+
+            setTimeout(() => ctx.close(), 900);
+        }
 
         // ── Buzz function ────────────────────────────────────
+        // Inserts a buzz row into Supabase.
+        // Disables the button immediately to prevent double-buzz.
         async function buzz() {
             const nickname = sessionStorage.getItem("playerNickname");
             const room = sessionStorage.getItem("playerRoom");
+
+            // Play sound immediately on tap — before anything else
+            // so there's zero perceived delay between press and feedback
+            playBuzzSound();
 
             document.getElementById("buzzBtn").disabled = true;
 
             const { error } = await supabase
                 .from("buzzes")
-                .insert({
-                    room: room,
-                    nickname: nickname
-                });
+                .insert({ room: room, nickname: nickname });
 
             if (error) {
                 console.error("Buzz failed:", error.message);
@@ -121,11 +277,12 @@
             console.log(`${nickname} buzzed in room ${room}`);
         }
 
+
         // ── Listen to room state ─────────────────────────────
-        // NEW — added here, after buzz() and before reload check
-        // Subscribes to changes on the rooms table for this room.
-        // Fires when host opens or closes the buzzer.
-        function listenToRoomState() {
+        // Subscribes to UPDATE events on the rooms table.
+        // When the host opens or closes the buzzer, this fires
+        // and the player screen updates instantly.
+        function listenToRoomState(room) {
             supabase
                 .channel("room-state-channel")
                 .on("postgres_changes", {
@@ -135,19 +292,16 @@
                     filter: `code=eq.${room}`
                 }, (payload) => {
                     console.log("Room state changed:", payload.new);
-
                     const buzzerOpen = payload.new.buzzer_open;
 
                     if (buzzerOpen) {
-                        // Host opened buzzer — show buzzer screen
-                        // and make sure button is enabled
+                        // Host opened buzzer — switch to buzzer screen
                         switchToBuzzer();
                         document.getElementById("buzzBtn").disabled = false;
                         document.getElementById("buzzBtn").style.display = "block";
                         document.getElementById("buzzConfirmation").style.display = "none";
                     } else {
-                        // Host closed buzzer or reset the round
-                        // Reset the buzz button so player can buzz again next round
+                        // Host closed buzzer or reset round — reset button
                         document.getElementById("buzzBtn").disabled = true;
                         document.getElementById("buzzBtn").style.display = "block";
                         document.getElementById("buzzConfirmation").style.display = "none";
@@ -156,34 +310,45 @@
                 .subscribe();
         }
 
+
         // ── Reload check ─────────────────────────────────────
-        // Runs immediately when page loads
-        // If player already joined before a reload, skip nickname screen
+        // If the player already joined before a reload, restore
+        // their session from sessionStorage and skip the join form.
+        // We also restart the room state listener with the saved room.
         const savedNickname = sessionStorage.getItem("playerNickname");
         const savedRoom = sessionStorage.getItem("playerRoom");
-        if (savedNickname && savedRoom === room) {
-            switchToWaiting(savedNickname);
-        }
 
-        // NEW — call listenToRoomState after reload check
-        // so the player starts listening as soon as the page loads
-        listenToRoomState();
+        if (savedNickname && savedRoom) {
+            switchToWaiting(savedNickname, savedRoom);
+            listenToRoomState(savedRoom);
+        } else if (roomFromUrl) {
+            // Not yet joined but room code is in the URL —
+            // start listening now so the transition is instant
+            // once they do join
+            listenToRoomState(roomFromUrl);
+        }
 
 
         // ── Event listeners ──────────────────────────────────
         document.getElementById("joinBtn").addEventListener("click", joinGame);
         document.getElementById("buzzBtn").addEventListener("click", buzz);
-        document.getElementById("nicknameInput").addEventListener("keydown", function (event) {
-            if (event.key === "Enter") {
-                joinGame();
-            }
+
+        // Allow Enter key on either input to trigger join
+        document.getElementById("roomCodeInput").addEventListener("keydown", function (e) {
+            if (e.key === "Enter") joinGame();
+        });
+        document.getElementById("nicknameInput").addEventListener("keydown", function (e) {
+            if (e.key === "Enter") joinGame();
         });
 
+        // Auto-uppercase the room code as the player types
+        // so they don't have to worry about case
+        document.getElementById("roomCodeInput").addEventListener("input", function () {
+            this.value = this.value.toUpperCase();
+        });
 
-        // ── Temporary console test ───────────────────────────
-        // Type switchToBuzzer() in DevTools console to test the buzzer screen
+        // Console shortcut for testing
         window.switchToBuzzer = switchToBuzzer;
-
     </script>
 </body>
 </html>
