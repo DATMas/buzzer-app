@@ -114,7 +114,7 @@
                 // ── Build join URL and show QR + share link ──────────
                 // window.location.origin gives the correct base URL
                 // whether on Live Server or GitHub Pages automatically
-                const joinUrl = `${window.location.origin}/join.html?room=${roomCode}`;
+                const joinUrl = `${window.location.origin}/buzzer-app/join.html?room=${roomCode}`;
 
                 new QRCode(document.getElementById("qrcode"), {
                     text: joinUrl,
