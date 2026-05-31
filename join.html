@@ -82,6 +82,16 @@
                     </p>
                 </div>
             </div>
+            <div id="endedScreen" style="display:none;">
+                <div class="waiting-screen">
+                    <span class="waiting-icon">🏁</span>
+                    <p class="waiting-name" style="font-size:22px;">Game Over!</p>
+                    <p class="waiting-msg">The host has ended this session.</p>
+                    <a href="index.html" class="btn-join" style="display:inline-block; margin-top:16px; text-decoration:none;">
+                        Back to Home
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
  
@@ -125,7 +135,24 @@
             document.getElementById("buzzerNameDisplay").innerText = nickname;
         }
 
+        function handleGameEnded() {
+            // Clear session so player starts fresh next visit
+            sessionStorage.removeItem("playerNickname");
+            sessionStorage.removeItem("playerRoom");
 
+            // Hide all screens
+            document.getElementById("nicknameScreen").style.display = "none";
+            document.getElementById("waitingScreen").style.display = "none";
+            document.getElementById("buzzerScreen").style.display = "none";
+
+            // Show ended screen
+            document.getElementById("endedScreen").style.display = "block";
+
+            // Auto-redirect after 3 seconds
+            setTimeout(() => {
+                window.location.href = "index.html";
+            }, 3000);
+        }
         // ── Join function ────────────────────────────────────
         // Validates both room code and nickname before joining.
         // Inserts a row into the players table so the host
@@ -171,10 +198,14 @@
             // This prevents players joining a room that hasn't started.
             const { data: roomData, error: roomError } = await supabase
                 .from("rooms")
-                .select("code")
+                .select("code, ended")
                 .eq("code", room)
                 .single();
-
+            if (roomData.ended) {
+                errorMsg.innerText = "This game has already ended.";
+                errorMsg.style.display = "block";
+                return;
+            }
             if (roomError || !roomData) {
                 errorMsg.innerText = "Room not found. Check the code and try again.";
                 errorMsg.style.display = "block";
@@ -197,6 +228,7 @@
             sessionStorage.setItem("playerRoom", room);
 
             switchToWaiting(nickname, room);
+            listenToRoomState(room);
         }
 
         // ── Buzz sound ───────────────────────────────────────
@@ -308,6 +340,12 @@
                     filter: `code=eq.${room}`
                 }, (payload) => {
                     console.log("Room state changed:", payload.new);
+                    // Check ended FIRST — takes priority over buzzer state
+                    if (payload.new.ended) {
+                        handleGameEnded();
+                        return; // Stop here — don't process buzzer state
+                    }
+
                     const buzzerOpen = payload.new.buzzer_open;
 
                     if (buzzerOpen) {
