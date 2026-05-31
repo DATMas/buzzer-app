@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#46178f">
+    <!-- Tells the browser not to request a favicon file -->
+    <!-- Without this it makes an automatic request that returns 404 -->
+    <link rel="icon" href="data:,">
     <title>Buzzer — Join</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -169,6 +172,37 @@
                 return;
             }
 
+            // Validate nickname
+            if (!nickname) {
+                errorMsg.innerText = "Please enter a nickname";
+                errorMsg.style.display = "block";
+                return;
+            }
+
+            errorMsg.style.display = "none";
+
+
+            // Check the room exists in Supabase before joining.
+            // This prevents players joining a room that hasn't started.
+            const { data: roomData, error: roomError } = await supabase
+                .from("rooms")
+                .select("code, ended")
+                .eq("code", room)
+                .single();
+
+
+            if (roomError || !roomData) {
+                errorMsg.innerText = "Room not found. Check the code and try again.";
+                errorMsg.style.display = "block";
+                return;
+            }
+
+            if (roomData.ended) {
+                errorMsg.innerText = "This game has already ended.";
+                errorMsg.style.display = "block";
+                return;
+            }
+
             // Check if nickname is already taken in this room
             const { data: existingPlayer, error: nickError } = await supabase
                 .from("players")
@@ -185,33 +219,8 @@
                 errorMsg.style.display = "block";
                 return;
             }
-            // Validate nickname
-            if (!nickname) {
-                errorMsg.innerText = "Please enter a nickname";
-                errorMsg.style.display = "block";
-                return;
-            }
 
-            errorMsg.style.display = "none";
-
-            // Check the room exists in Supabase before joining.
-            // This prevents players joining a room that hasn't started.
-            const { data: roomData, error: roomError } = await supabase
-                .from("rooms")
-                .select("code, ended")
-                .eq("code", room)
-                .single();
-            if (roomData.ended) {
-                errorMsg.innerText = "This game has already ended.";
-                errorMsg.style.display = "block";
-                return;
-            }
-            if (roomError || !roomData) {
-                errorMsg.innerText = "Room not found. Check the code and try again.";
-                errorMsg.style.display = "block";
-                return;
-            }
-
+            
             // Insert player into the players table so the host
             // can see them appear in real time on the host screen
             const { error: playerError } = await supabase
