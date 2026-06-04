@@ -33,25 +33,34 @@
         </div>
         <div class="card host-main-card">
             <button id="endGameBtn" class="btn-end-game">End Game</button>
-            <!-- Room code badge -->
-            <div class="room-badge">
-                <span class="room-label">Room</span>
-                <span class="room-code" id="roomCode"></span>
+
+             <!-- Card header with collapse toggle -->
+            <div class="card-header-row">
+                <h2>Join Info</h2>
+                <button class="btn-collapse" id="toggleJoinInfo">Hide ▲</button>
             </div>
 
-            <!-- QR code -->
-            <div class="qr-wrapper">
-                <div id="qrcode"></div>
-            </div>
-            <p class="qr-hint">Scan to join on your phone</p>
+            <!-- Wrap everything that should collapse in this div -->
+            <div id="joinInfoContent">
+                <!-- Room code badge -->
+                <div class="room-badge">
+                    <span class="room-label">Room</span>
+                    <span class="room-code" id="roomCode"></span>
+                </div>
 
-            <!-- Shareable link -->
-            <!-- Players who can't scan can use this URL instead -->
-            <div class="share-row">
-                <input type="text" id="shareLink" class="share-input" readonly>
-                <button id="copyBtn" class="btn-copy">Copy</button>
-            </div>
+                <!-- QR code -->
+                <div class="qr-wrapper">
+                    <div id="qrcode"></div>
+                </div>
+                <p class="qr-hint">Scan to join on your phone</p>
 
+                <!-- Shareable link -->
+                <!-- Players who can't scan can use this URL instead -->
+                <div class="share-row">
+                    <input type="text" id="shareLink" class="share-input" readonly>
+                    <button id="copyBtn" class="btn-copy">Copy</button>
+                </div>
+            </div>
             <!-- Buzzer status. Shows whether buzzer is currently open or closed -->
             <div class="buzzer-status closed" id="buzzerStatus">
                 🔴 Buzzer Closed
@@ -74,12 +83,17 @@
         <!-- Players card — shows who has joined -->
         <div class="card">
             <div class="card-header-row">
-                <h2>Players</h2>
-                <!-- Player count badge updates in real time -->
-                <span class="player-count" id="playerCount">0</span>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <h2>Players</h2>
+                    <!-- Player count badge updates in real time -->
+                    <span class="player-count" id="playerCount">0</span>
+                </div>
+                <button class="btn-collapse" id="togglePlayers">Hide ▲</button>
             </div>
-            <div class="player-list" id="playerList">
-                <p class="leaderboard-placeholder">No players yet…</p>
+            <div id="playersContent">
+                <div class="player-list" id="playerList">
+                    <p class="leaderboard-placeholder">No players yet…</p>
+                </div>
             </div>
         </div>
 
@@ -436,7 +450,7 @@
 
                 // ── Event listeners ──────────────────────────────────
                 document.getElementById("openBtn").addEventListener("click", toggleBuzzer);
-                document.getElementById("nextBtn").addEventListener("click", nextResponder);
+                // document.getElementById("nextBtn").addEventListener("click", nextResponder);
                 document.getElementById("resetBtn").addEventListener("click", resetBuzzes);
                 // Show modal when End Game clicked
                 document.getElementById("endGameBtn").addEventListener("click", () => {
@@ -462,6 +476,45 @@
                         document.getElementById("endGameModal").style.display = "none";
                     }
                 });
+                // ── Collapsible sections ─────────────────────────────
+                // Each toggle button controls a content div.
+                // We use CSS max-height transition for smooth animation —
+                // setting max-height to 0 collapses it, a large value expands it.
+                // overflow: hidden on the content div is what makes this work.
+
+                function setupCollapse(btnId, contentId) {
+                    const btn = document.getElementById(btnId);
+                    const content = document.getElementById(contentId);
+                    let isVisible = true;
+
+                    btn.addEventListener("click", () => {
+                        isVisible = !isVisible;
+
+                    if (isVisible) {
+                        // Expand — set max-height large enough to fit any content
+                        content.style.maxHeight = content.scrollHeight + "px";
+                        btn.innerText = "Hide ▲";
+                    } else {
+                        // Collapse — animate to zero height
+                        content.style.maxHeight = "0";
+                        btn.innerText = "Show ▼";
+                    }
+                });
+
+                    // Set initial max-height so the transition works on first click.
+                    // Without this the first collapse has no starting point to animate from.
+                    content.style.maxHeight = content.scrollHeight + "px";
+                }
+                // Wait for QR code to finish rendering before setting up collapse
+                // so scrollHeight returns the correct full height
+                // setTimeout(() => {
+                    // Set up both collapsible sections
+                    setupCollapse("toggleJoinInfo", "joinInfoContent");
+                    setupCollapse("togglePlayers", "playersContent");
+                // }, 500);/
+                // // Set up both collapsible sections
+                // setupCollapse("toggleJoinInfo", "joinInfoContent");
+                // setupCollapse("togglePlayers", "playersContent");
             </script>
 </body>
 </html>
